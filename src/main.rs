@@ -4,6 +4,21 @@ use std::io::{Read, Result, Write};
 use std::net::{TcpListener, TcpStream};
 use std::{fs, thread};
 
+fn send_message(stream: &mut TcpStream,msg:&str) -> Result<()>{
+
+    let payload = msg.as_bytes();
+    let payload_len = payload.len();
+
+    let mut frame = Vec::new();
+
+    frame.push(0x81);
+    frame.push(payload_len as u8);
+    frame.extend_from_slice(payload);
+
+    let _ = stream.write_all(&frame);
+    Ok(())
+}
+
 fn handle_client(mut stream: TcpStream) -> Result<()> {
     let mut buffer = [0; 512];
 
@@ -37,6 +52,11 @@ fn handle_client(mut stream: TcpStream) -> Result<()> {
             )
             .as_bytes(),
         )?;
+        loop{
+            let mut buf = [0;512];
+
+            send_message(&mut stream, "hola");
+        }
     }
 
     let contents = fs::read("src/index.html").unwrap();
