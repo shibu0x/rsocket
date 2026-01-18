@@ -1,6 +1,5 @@
 use std::io::{Read, Result};
 use std::net::TcpStream;
-use std::str::FromStr;
 
 pub struct FrameHeader {
     fin: bool,
@@ -8,16 +7,7 @@ pub struct FrameHeader {
     payload_len: u64,
     mask: bool,
     masking_key: Option<[u8; 4]>,
-    message: Option<Message>,
-}
-
-pub enum Message {
-    Text(String),
-    Binary(Vec<u8>),
-    Ping(String),
-    Pong(String),
-    Close(String),
-    Continue(String),
+    decoded_data : Vec<u8>,
 }
 
 pub fn read_header(stream: &mut TcpStream) -> Result<FrameHeader> {
@@ -48,57 +38,37 @@ pub fn read_header(stream: &mut TcpStream) -> Result<FrameHeader> {
     if payload_len == 126 {
         let mut next_two = [0u8; 2];
         let _ = stream.read_exact(&mut next_two);
-        payload_len = u16::from_le_bytes(next_two) as u64;
+        payload_len = u16::from_be_bytes(next_two) as u64;
     } else if payload_len == 127 {
         let mut next_eight = [0u8; 8];
         let _ = stream.read_exact(&mut next_eight);
-        payload_len = u64::from_le_bytes(next_eight) as u64;
+        payload_len = u64::from_be_bytes(next_eight) as u64;
     }
 
-    //here we will get the masking key if the payload is mask
-    // this is rule from client to server it should be mask
-    // from server to client it shouldn't
+    //now we will get the masking key if we get mask as 1 means the payload data is masked
+    // masking key comes after the payload len bits
     let masking_key = if mask {
-        let mut key = [0u8; 4];
-        let _ = stream.read_exact(&mut key);
+        let mut key = [0u8;4];
+        stream.read_exact(&mut key).expect("unable to read masking key");
         Some(key)
-    } else {
+    } else{
         None
     };
+    let mut decoded_data = vec![0u8;payload_len as usize];
 
-    //now we are converting the masked data to unmasked data
-    let mut masked_data = vec![0u8; payload_len as usize];
-    let _ = stream.read_exact(&mut masked_data);
-    let key = masking_key.unwrap();
-    let mut decoded_data = vec![0u8; payload_len as usize];
-
+    //check if the mask is present then decode the payload data and then unmask it using the masking key 
     if mask {
+        let mut payload_data = vec![0u8;payload_len as usize];
+        stream.read_exact(&mut payload_data).expect("unable to read payload_data");
+        let key = masking_key.unwrap();
         for i in 0..payload_len {
             let idx: usize = i.try_into().unwrap();
-            decoded_data[idx] = masked_data[idx] ^ key[idx % 4];
+            decoded_data[idx] = payload_data[idx] ^ key[idx % 4];
         }
+    } else {
+        stream.read_exact(&mut decoded_data).expect("unable to read payload_data");
     }
 
-    // here we will match all the types opcode can send and accordingly respond back
-    let message: Option<Message> = match opcode {
-        0x1 => Some(Message::Text(
-            String::from_utf8(decoded_data).expect("undefined byte"),
-        )),
-        0x2 => Some(Message::Binary(decoded_data)),
-        0x9 => Some(Message::Ping(
-            String::from_str("recieved ping").expect("undefined msg"),
-        )),
-        0xA => Some(Message::Pong(
-            String::from_str("client's pong").expect("undefined msg"),
-        )),
-        0x8 => Some(Message::Close(
-            String::from_str("client's close").expect("undefined msg"),
-        )),
-        0x0 => Some(Message::Continue(
-            String::from_str("Continuation").expect("undefined msg"),
-        )),
-        _ => None,
-    };
 
     Ok(FrameHeader {
         fin,
@@ -106,6 +76,6 @@ pub fn read_header(stream: &mut TcpStream) -> Result<FrameHeader> {
         payload_len,
         mask,
         masking_key,
-        message,
+        decoded_data,
     })
 }
