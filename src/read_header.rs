@@ -1,13 +1,11 @@
 use std::io::{Read, Result};
 use std::net::TcpStream;
 
+#[derive(Debug,Clone)]
 pub struct FrameHeader {
-    fin: bool,
-    opcode: u8,
-    payload_len: u64,
-    mask: bool,
-    masking_key: Option<[u8; 4]>,
-    decoded_data : Vec<u8>,
+    pub fin: bool,
+    pub opcode: u8,
+    pub decoded_data : Vec<u8>,
 }
 
 pub fn read_header(stream: &mut TcpStream) -> Result<FrameHeader> {
@@ -73,9 +71,6 @@ pub fn read_header(stream: &mut TcpStream) -> Result<FrameHeader> {
     Ok(FrameHeader {
         fin,
         opcode,
-        payload_len,
-        mask,
-        masking_key,
         decoded_data,
     })
 }
