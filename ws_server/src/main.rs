@@ -1,10 +1,12 @@
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use sha1::{Digest, Sha1};
 use std::io::{Read, Result, Write};
-use std::net::TcpStream;
+use std::net::{TcpListener, TcpStream};
+use std::thread;
 
-use crate::read_header::read_header;
-use crate::send_message::send_message;
+use ws_core::read::read_header;
+use ws_core::write::send_message;
+
 
 pub fn handle_client(mut stream: TcpStream) -> Result<()> {
     // these variable are here to read all the buffer sent from the client
@@ -40,7 +42,7 @@ pub fn handle_client(mut stream: TcpStream) -> Result<()> {
         //get the key to upgrade the protocol
         for line in request.lines() {
             if line.starts_with("Sec-WebSocket-Key:") {
-                websocket_key = Some(line.split(":").nth(1).unwrap().trim().to_string()).unwrap();
+                websocket_key = line.split(":").nth(1).unwrap().trim().to_string();
             }
         }
 
@@ -129,5 +131,26 @@ pub fn handle_client(mut stream: TcpStream) -> Result<()> {
             }
         }
     }
+    Ok(())
+}
+
+pub fn main() -> Result<()> {
+    let listener = TcpListener::bind("127.0.0.1:8080")?;
+
+    for stream in listener.incoming() {
+        match stream {
+            Ok(stream) => {
+                println!("Connection Established");
+
+                thread::spawn(move || {
+                    let _ = handle_client(stream);
+                });
+            }
+            Err(e) => {
+                println!("Connection failed : {}", e);
+            }
+        }
+    }
+
     Ok(())
 }

@@ -40,7 +40,7 @@ pub fn read_header(stream: &mut TcpStream) -> Result<FrameHeader> {
     } else if payload_len == 127 {
         let mut next_eight = [0u8; 8];
         let _ = stream.read_exact(&mut next_eight);
-        payload_len = u64::from_be_bytes(next_eight) as u64;
+        payload_len = u64::from_be_bytes(next_eight);
     }
 
     //now we will get the masking key if we get mask as 1 means the payload data is masked
