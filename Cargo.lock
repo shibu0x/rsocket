@@ -64,9 +64,9 @@ dependencies = [
 
 [[package]]
 name = "libc"
-version = "0.2.179"
+version = "0.2.180"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c5a2d376baa530d1238d133232d15e239abad80d05838b4b59354e5268af431f"
+checksum = "bcc35a38544a891a5f7c865aca548a982ccb3b8650a5b06d0fd33a10283c56fc"
 
 [[package]]
 name = "sha1"
@@ -92,9 +92,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
-name = "websocket"
+name = "ws_client"
+version = "0.1.0"
+
+[[package]]
+name = "ws_core"
+version = "0.1.0"
+
+[[package]]
+name = "ws_server"
 version = "0.1.0"
 dependencies = [
  "base64",
  "sha1",
+ "ws_core",
 ]
