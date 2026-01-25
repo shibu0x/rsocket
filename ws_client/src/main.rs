@@ -86,7 +86,6 @@ pub fn handle_server(mut stream: TcpStream) -> Result<()> {
                 }
 
                 send_client_message(&mut stream, byte1, &encoded_data, masking_key)?;
-                break;
             }
         } else {
             println!("failed to upgrade connection")
