@@ -37,7 +37,7 @@ pub fn handle_client(mut stream: TcpStream) -> Result<()> {
     let request = String::from_utf8_lossy(&buffer);
 
     //check if the request contains the upgrade websocket
-    if request.contains("Upgrade: websocket") {
+    if request.contains("Upgrade: websocket") && request.contains("Sec-WebSocket-Key") && request.contains("Sec-WebSocket-Version") {
         let mut websocket_key = String::new();
         //get the key to upgrade the protocol
         for line in request.lines() {
