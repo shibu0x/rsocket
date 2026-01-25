@@ -5,7 +5,7 @@ use std::net::{TcpListener, TcpStream};
 use std::thread;
 
 use ws_core::read::read_header;
-use ws_core::write::send_message;
+use ws_core::write::send_server_message;
 
 
 pub fn handle_client(mut stream: TcpStream) -> Result<()> {
@@ -82,14 +82,14 @@ pub fn handle_client(mut stream: TcpStream) -> Result<()> {
                 //close frame from the client
                 if cont_opcode == 0b0000_1000 {
                     let byte1 = fin_code | 0b0000_1000;
-                    send_message(&mut stream, byte1, &frame.decoded_data)?;
+                    send_server_message(&mut stream, byte1, &frame.decoded_data)?;
                     return Ok(());
                 }
 
                 //ping from the client
                 if cont_opcode == 0b0000_1001 {
                     let byte1 = fin_code | 0b0000_1010;
-                    send_message(&mut stream, byte1, &frame.decoded_data)?;
+                    send_server_message(&mut stream, byte1, &frame.decoded_data)?;
                     continue;
                 }
 
@@ -119,14 +119,14 @@ pub fn handle_client(mut stream: TcpStream) -> Result<()> {
                     println!("Text recieved : {}",text);
 
                     let byte1 = fin_code | opcode;
-                    send_message(&mut stream, byte1, text.as_bytes())?;
+                    send_server_message(&mut stream, byte1, text.as_bytes())?;
                     continue;
                 }
             } else {
                 println!("Recieved {} of binary message",final_message.len());
 
                 let byte1 = fin_code | opcode;
-                send_message(&mut stream, byte1, &final_message)?;
+                send_server_message(&mut stream, byte1, &final_message)?;
                 continue;
             }
         }

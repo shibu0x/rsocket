@@ -204,6 +204,7 @@ dependencies = [
  "base64",
  "rand",
  "sha1",
+ "ws_core",
 ]
 
 [[package]]
