@@ -5,6 +5,7 @@ use base64::Engine;
 use base64::engine::general_purpose;
 use rand::Rng;
 use sha1::{Digest, Sha1};
+use ws_core::read::read_header;
 use ws_core::write::send_client_message;
 
 pub fn handle_server(mut stream: TcpStream) -> Result<()> {
@@ -72,20 +73,77 @@ pub fn handle_server(mut stream: TcpStream) -> Result<()> {
             loop {
                 let msg = "Hello, server".as_bytes();
                 let fincode = 0b1000_0000;
-                let opcode = 0b0000_0001;
-
-                let byte1 = fincode | opcode;
-
+                let mut opcode = 0b0000_0001;
                 let mut masking_key = [0u8; 4];
                 rand::rng().fill(&mut masking_key[..]);
-                let mut encoded_data = vec![0u8; msg.len()];
-
-                for i in 0..msg.len() {
-                    let idx: usize = i.try_into().unwrap();
-                    encoded_data[idx] = msg[idx] ^ masking_key[idx % 4];
-                }
+                let byte1 = fincode | opcode;
+                let encoded_data = mask_data(msg, &masking_key);
+                let mut final_message = Vec::new();
+                let mut is_first = true;
 
                 send_client_message(&mut stream, byte1, &encoded_data, masking_key)?;
+
+                loop {
+                    let frame = read_header(&mut stream).unwrap();
+                    let cont_opcode = frame.opcode;
+                    
+
+                    if cont_opcode == 0b0000_1000 {
+                        let mut masking_key = [0u8; 4];
+                        rand::rng().fill(&mut masking_key[..]);
+                        let byte1 = fincode | 0b0000_1000;
+                        let encoded_data = mask_data(&frame.decoded_data, &masking_key);
+                        send_client_message(&mut stream, byte1, &encoded_data, masking_key)?;
+                        return Ok(());
+                    }
+
+                    if cont_opcode == 0b0000_1001 {
+                        let mut masking_key = [0u8; 4];
+                        rand::rng().fill(&mut masking_key[..]);
+                        let byte1 = fincode | 0b0000_1010;
+                        let encoded_data = mask_data(&frame.decoded_data, &masking_key);
+                        send_client_message(&mut stream, byte1, &encoded_data, masking_key)?;
+                        continue;
+                    }
+
+                    if cont_opcode == 0b0000_1010 {
+                        continue;
+                    }
+
+                    if is_first {
+                        opcode = cont_opcode;
+                        is_first = false;
+                    }
+
+                    final_message.extend(frame.decoded_data);
+                    if frame.fin {
+                        break;
+                    }
+                }
+
+                if opcode == 0b0000_0001 {
+                    if let Ok(text) = String::from_utf8(final_message.clone()) {
+                        println!("Text recieved : {}", text);
+
+                        let mut masking_key = [0u8; 4];
+                        rand::rng().fill(&mut masking_key[..]);
+                        let byte1 = fincode | 0b0000_0001;
+                        let msg ="HI again server".as_bytes();
+                        let encoded_data = mask_data(&msg, &masking_key);
+                        send_client_message(&mut stream, byte1, &encoded_data, masking_key)?;
+                        continue;
+                    }
+                } else {
+                    println!("Recieved {} of binary message", final_message.len());
+
+                    let mut masking_key = [0u8; 4];
+                    rand::rng().fill(&mut masking_key[..]);
+                    let byte1 = fincode | 0b0000_0010;
+                    let msg ="HI again server".as_bytes();
+                    let encoded_data = mask_data(&msg, &masking_key);
+                    send_client_message(&mut stream, byte1, &encoded_data, masking_key)?;
+                    continue;
+                }
             }
         } else {
             println!("failed to upgrade connection")
@@ -118,4 +176,15 @@ fn generate_base64_key(bytes: u8) -> String {
     let encoded = general_purpose::STANDARD.encode(&key_bytes);
 
     encoded
+}
+
+fn mask_data(payload: &[u8], masking_key: &[u8; 4]) -> Vec<u8> {
+    let mut encoded_data = vec![0u8; payload.len()];
+
+    for i in 0..payload.len() {
+        let idx: usize = i.try_into().unwrap();
+        encoded_data[idx] = payload[idx] ^ masking_key[idx % 4];
+    }
+
+    return encoded_data;
 }
