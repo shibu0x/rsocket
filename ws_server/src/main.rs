@@ -8,12 +8,14 @@ use std::thread;
 use ws_core::read::read_header;
 use ws_core::write::send_server_message;
 
-
-pub fn handle_client(mut stream: TcpStream, clients: Arc<Mutex<Vec<(usize,TcpStream)>>>) -> Result<()> {
+pub fn handle_client(
+    mut stream: TcpStream,
+    clients: Arc<Mutex<Vec<(usize, String, TcpStream)>>>,
+) -> Result<()> {
     {
         let mut list = clients.lock().unwrap();
         let id = stream.peer_addr().unwrap().port() as usize;
-        list.push((id,stream.try_clone()?));
+        list.push((id, String::new(), stream.try_clone()?));
     }
     // these variable are here to read all the buffer sent from the client
     let mut buffer = Vec::new();
@@ -82,6 +84,7 @@ pub fn handle_client(mut stream: TcpStream, clients: Arc<Mutex<Vec<(usize,TcpStr
             let mut final_message = Vec::new();
             let mut is_first = true;
             let mut opcode: u8 = 0;
+            let sender_id = stream.peer_addr().unwrap().port() as usize;
 
             loop {
                 //read each from coming from the the client
@@ -90,8 +93,7 @@ pub fn handle_client(mut stream: TcpStream, clients: Arc<Mutex<Vec<(usize,TcpStr
 
                 //close frame from the client
                 if cont_opcode == 0b0000_1000 {
-                    let id = stream.peer_addr().unwrap().port() as usize;
-                    remove_client(id, &clients);
+                    remove_client(sender_id, &clients);
                     return Ok(());
                 }
 
@@ -120,10 +122,28 @@ pub fn handle_client(mut stream: TcpStream, clients: Arc<Mutex<Vec<(usize,TcpStr
                 }
             }
 
+            let incoming_message = String::from_utf8(final_message.clone()).unwrap();
+            let mut outgoing_message = String::new();
+            {
+                let mut list = clients.lock().unwrap();
+                for (cid, username, _) in list.iter_mut() {
+                    if *cid == sender_id {
+                        if username.is_empty() {
+                            *username = incoming_message.clone();
+                            outgoing_message =
+                                format!("{} just joined the chat!", incoming_message.clone());
+                        } else {
+                            outgoing_message =
+                                format!("{} : {}", username, incoming_message.clone())
+                        }
+                    }
+                }
+            }
+
             let snapshot = {
                 let list = clients.lock().unwrap();
                 list.iter()
-                    .map(|(cid,c)| (*cid,c.try_clone().unwrap()))
+                    .map(|(cid, username, c)| (*cid, username.clone(), c.try_clone().unwrap()))
                     .collect::<Vec<_>>()
             };
 
@@ -131,27 +151,28 @@ pub fn handle_client(mut stream: TcpStream, clients: Arc<Mutex<Vec<(usize,TcpStr
             //TEXT type opcode = 1 (0b0000_0001)
             //BINARY type opcode = 2 (0b0000_0010)
             if opcode == 0b0000_0001 {
-                if let Ok(text) = String::from_utf8(final_message.clone()) {
-                    println!("Text recieved : {}", text);
-
-                    let byte1 = fin_code | opcode;
-                    for (cid,mut c) in snapshot {
-                        if let Err(_) = send_server_message(&mut c, byte1, text.as_bytes()) {
+                let byte1 = fin_code | opcode;
+                for (cid, _, mut c) in snapshot {
+                    if cid != sender_id {
+                        if let Err(_) =
+                            send_server_message(&mut c, byte1, outgoing_message.as_bytes())
+                        {
                             remove_client(cid, &clients);
                         }
                     }
-
-                    continue;
                 }
+                continue;
             } else {
                 println!("Recieved {} of binary message", final_message.len());
 
                 let byte1 = fin_code | opcode;
-                for (cid,mut c) in snapshot {
+                for (cid, _, mut c) in snapshot {
+                    if cid != sender_id {
                         if let Err(_) = send_server_message(&mut c, byte1, &final_message) {
                             remove_client(cid, &clients);
                         }
                     }
+                }
                 continue;
             }
         }
@@ -181,7 +202,7 @@ pub fn main() -> Result<()> {
     Ok(())
 }
 
-fn remove_client (id:usize,clients: &Arc<Mutex<Vec<(usize,TcpStream)>>>) {
+fn remove_client(id: usize, clients: &Arc<Mutex<Vec<(usize, String, TcpStream)>>>) {
     let mut list = clients.lock().unwrap();
-    list.retain(|(cid, _)| *cid != id);
+    list.retain(|(cid, _, _)| *cid != id);
 }
